@@ -123,6 +123,12 @@ public class BlockListeners implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onSpawnerPlace(BlockPlaceEvent event) {
+        if (CompatibleHand.getHand(event) == CompatibleHand.OFF_HAND && event.getItemInHand().getType() == Material.SPAWNER) {
+            event.setCancelled(true);
+            plugin.getLocale().getMessageOrDefault("event.block.offhand", "&cEen spawner kan niet geplaatst worden met de off-hand.").sendPrefixedMessage(event.getPlayer());
+            return;
+        }
+
         // We are ignoring canceled inside the event so that it will still remove holograms when the event is canceled.
         if (!event.isCancelled()) {
             Block block = event.getBlock();

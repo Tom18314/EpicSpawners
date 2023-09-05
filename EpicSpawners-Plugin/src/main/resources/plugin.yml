@@ -4,6 +4,8 @@ version: ${project.version}
 api-version: 1.13
 
 main: com.craftaro.epicspawners.EpicSpawners
+depend:
+  - WildStacker
 softdepend:
   - ASkyBlock
   - BentoBox

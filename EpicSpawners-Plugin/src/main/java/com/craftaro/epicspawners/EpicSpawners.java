@@ -19,36 +19,22 @@ import com.craftaro.epicspawners.api.boosts.types.Boosted;
 import com.craftaro.epicspawners.api.player.PlayerData;
 import com.craftaro.epicspawners.api.spawners.spawner.PlacedSpawner;
 import com.craftaro.epicspawners.api.spawners.spawner.SpawnerData;
+import com.craftaro.epicspawners.api.spawners.spawner.SpawnerManager;
 import com.craftaro.epicspawners.api.spawners.spawner.SpawnerStack;
 import com.craftaro.epicspawners.blacklist.BlacklistHandler;
 import com.craftaro.epicspawners.boost.BoostManagerImpl;
 import com.craftaro.epicspawners.boost.types.BoostedPlayerImpl;
 import com.craftaro.epicspawners.boost.types.BoostedSpawnerImpl;
-import com.craftaro.epicspawners.commands.CommandBoost;
-import com.craftaro.epicspawners.commands.CommandChange;
-import com.craftaro.epicspawners.commands.CommandEditor;
-import com.craftaro.epicspawners.commands.CommandGive;
-import com.craftaro.epicspawners.commands.CommandOpenShop;
-import com.craftaro.epicspawners.commands.CommandReload;
-import com.craftaro.epicspawners.commands.CommandSettings;
-import com.craftaro.epicspawners.commands.CommandSpawn;
-import com.craftaro.epicspawners.commands.CommandSpawnerShop;
-import com.craftaro.epicspawners.commands.CommandSpawnerStats;
+import com.craftaro.epicspawners.commands.*;
 import com.craftaro.epicspawners.database.migrations._1_InitialMigration;
 import com.craftaro.epicspawners.database.migrations._2_AddTiers;
 import com.craftaro.epicspawners.database.migrations._3_AddIndexToEntityKills;
-import com.craftaro.epicspawners.listeners.BlockListeners;
-import com.craftaro.epicspawners.listeners.EntityListeners;
-import com.craftaro.epicspawners.listeners.InteractListeners;
-import com.craftaro.epicspawners.listeners.InventoryListeners;
-import com.craftaro.epicspawners.listeners.SpawnerListeners;
-import com.craftaro.epicspawners.listeners.WorldListeners;
+import com.craftaro.epicspawners.listeners.*;
 import com.craftaro.epicspawners.lootables.LootablesManager;
 import com.craftaro.epicspawners.player.PlayerDataManagerImpl;
 import com.craftaro.epicspawners.settings.Settings;
 import com.craftaro.epicspawners.spawners.SpawnManager;
 import com.craftaro.epicspawners.spawners.spawner.PlacedSpawnerImpl;
-import com.craftaro.epicspawners.api.spawners.spawner.SpawnerManager;
 import com.craftaro.epicspawners.spawners.spawner.SpawnerManagerImpl;
 import com.craftaro.epicspawners.spawners.spawner.SpawnerStackImpl;
 import com.craftaro.epicspawners.tasks.AppearanceTask;
@@ -66,11 +52,7 @@ import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.plugin.PluginManager;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 public class EpicSpawners extends SongodaPlugin {
     private final GuiManager guiManager = new GuiManager(this);
@@ -104,8 +86,15 @@ public class EpicSpawners extends SongodaPlugin {
         if (!this.spawnerManager.wasConfigModified()) {
             this.saveToFile();
         }
-        this.particleTask.cancel();
-        this.spawnerCustomSpawnTask.cancel();
+
+        if (Bukkit.getScheduler().isCurrentlyRunning(this.particleTask.getTaskId())) {
+            this.particleTask.cancel();
+        }
+
+        if (Bukkit.getScheduler().isCurrentlyRunning(this.spawnerCustomSpawnTask.getTaskId())) {
+            this.spawnerCustomSpawnTask.cancel();
+        }
+
         HologramManager.removeAllHolograms();
     }
 
