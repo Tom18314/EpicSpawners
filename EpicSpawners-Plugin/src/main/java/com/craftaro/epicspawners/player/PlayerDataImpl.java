@@ -52,17 +52,17 @@ public class PlayerDataImpl implements PlayerData {
     @Override
     public void save() {
         DataManager dataManager = EpicSpawners.getInstance().getDataManager();
-        dataManager.getDatabaseConnector().connectDSL(context -> {
-            for (Map.Entry<EntityType, Integer> entry : this.entityKills.entrySet()) {
-                context.insertInto(DSL.table(dataManager.getTablePrefix() + "entity_kills"))
-                        .set(DSL.field("player"), this.playerUUID.toString())
-                        .set(DSL.field("entity_type"), entry.getKey().name())
-                        .set(DSL.field("count"), entry.getValue())
-                        .onDuplicateKeyUpdate()
-                        .set(DSL.field("count"), entry.getValue())
-                        .execute();
-            }
-        });
+//        dataManager.getDatabaseConnector().connectDSL(context -> {
+//            for (Map.Entry<EntityType, Integer> entry : this.entityKills.entrySet()) {
+//                context.insertInto(DSL.table(dataManager.getTablePrefix() + "entity_kills"))
+//                        .set(DSL.field("player"), this.playerUUID.toString())
+//                        .set(DSL.field("entity_type"), entry.getKey().name())
+//                        .set(DSL.field("count"), entry.getValue())
+//                        .onDuplicateKeyUpdate()
+//                        .set(DSL.field("count"), entry.getValue())
+//                        .execute();
+//            }
+//        });
     }
 
     @Override

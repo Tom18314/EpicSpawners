@@ -11,20 +11,13 @@ import com.craftaro.core.hooks.EntityStackerManager;
 import com.craftaro.core.hooks.HologramManager;
 import com.craftaro.core.hooks.ProtectionManager;
 import com.craftaro.core.third_party.com.cryptomorin.xseries.XMaterial;
-import com.craftaro.core.third_party.org.jooq.Record;
-import com.craftaro.core.third_party.org.jooq.Result;
-import com.craftaro.core.third_party.org.jooq.impl.DSL;
 import com.craftaro.epicspawners.api.EpicSpawnersApi;
-import com.craftaro.epicspawners.api.boosts.types.Boosted;
-import com.craftaro.epicspawners.api.player.PlayerData;
 import com.craftaro.epicspawners.api.spawners.spawner.PlacedSpawner;
 import com.craftaro.epicspawners.api.spawners.spawner.SpawnerData;
 import com.craftaro.epicspawners.api.spawners.spawner.SpawnerManager;
 import com.craftaro.epicspawners.api.spawners.spawner.SpawnerStack;
 import com.craftaro.epicspawners.blacklist.BlacklistHandler;
 import com.craftaro.epicspawners.boost.BoostManagerImpl;
-import com.craftaro.epicspawners.boost.types.BoostedPlayerImpl;
-import com.craftaro.epicspawners.boost.types.BoostedSpawnerImpl;
 import com.craftaro.epicspawners.commands.*;
 import com.craftaro.epicspawners.database.migrations._1_InitialMigration;
 import com.craftaro.epicspawners.database.migrations._2_AddTiers;
@@ -43,18 +36,23 @@ import com.craftaro.epicspawners.tasks.SpawnerSpawnTask;
 import com.craftaro.epicspawners.utils.SpawnerDataBuilderImpl;
 import com.craftaro.epicspawners.utils.SpawnerTierBuilderImpl;
 import org.bukkit.Bukkit;
-import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.block.Block;
-import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
+import org.bukkit.event.player.PlayerLoginEvent;
 import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.plugin.PluginManager;
-import org.jetbrains.annotations.NotNull;
 
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
 
-public class EpicSpawners extends SongodaPlugin {
+public class EpicSpawners extends SongodaPlugin implements Listener {
     private final GuiManager guiManager = new GuiManager(this);
     private SpawnManager spawnManager;
     private PlayerDataManagerImpl playerActionManager;
@@ -102,6 +100,8 @@ public class EpicSpawners extends SongodaPlugin {
     public void onPluginEnable() {
         // Run Songoda Updater
         SongodaCore.registerPlugin(this, 13, XMaterial.SPAWNER);
+
+        super.getServer().getPluginManager().registerEvents(this, this);
 
         // Load Economy, Hologram and Protection hooks
         EconomyManager.load();
@@ -168,56 +168,77 @@ public class EpicSpawners extends SongodaPlugin {
         new EpicSpawnersApi(this, this.spawnerManager, new SpawnerDataBuilderImpl(""), new SpawnerTierBuilderImpl());
     }
 
+    private volatile boolean isDatabaseInitialized = false;
+
     @Override
     public void onDataLoad() {
         DataManager dataManager = getDataManager();
-        this.spawnerManager.addSpawners(dataManager.loadBatch(PlacedSpawnerImpl.class, "placed_spawners"));
-        //Need to load the SpawnerStacks to the loaded spawners now.
-        List<SpawnerStack> stacks = dataManager.loadBatch(SpawnerStackImpl.class, "spawner_stacks");
-        loadHolograms();
 
-        List<Boosted> boosted = new ArrayList<>();
-        String prefix = dataManager.getTablePrefix();
-        dataManager.getDatabaseConnector().connectDSL(dslContext -> {
-            dslContext.select().from(DSL.table(prefix + "boosted_players")).fetch().forEach(record -> {
-                boosted.add(new BoostedPlayerImpl(
-                        UUID.fromString(record.get("player").toString()),
-                        Integer.parseInt(record.get("amount").toString()),
-                        Long.parseLong(record.get("end_time").toString())
-                ));
-            });
+        Runnable runnable = () -> {
+            this.isDatabaseInitialized = true;
+            this.loadHolograms();
+        };
+        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+            this.spawnerManager.addSpawners(dataManager.loadBatch(PlacedSpawnerImpl.class, "placed_spawners"));
+            //Need to load the SpawnerStacks to the loaded spawners now.
+            List<SpawnerStack> stacks = dataManager.loadBatch(SpawnerStackImpl.class, "spawner_stacks");
+//            this.loadHolograms();
 
-            dslContext.select().from(DSL.table(prefix + "boosted_spawners")).fetch().forEach(record -> {
-                Location location = new Location(
-                        Bukkit.getWorld(record.get("world").toString()),
-                        Double.parseDouble(record.get("x").toString()),
-                        Double.parseDouble(record.get("y").toString()),
-                        Double.parseDouble(record.get("z").toString()));
-                boosted.add(new BoostedSpawnerImpl(
-                        location,
-                        Integer.parseInt(record.get("amount").toString()),
-                        Long.parseLong(record.get("end_time").toString())
-                ));
-            });
+            System.out.println("Loaded " + this.spawnerManager.getSpawners().size() + " Spawners");
+            System.out.println("Loaded " + stacks.size() + " SpawnerStacks");
+            Bukkit.getScheduler().runTask(this, runnable);
         });
-        this.boostManager.addBoosts(boosted);
 
-        //Load entity kills
-        dataManager.getDatabaseConnector().connectDSL(dslContext -> {
-            @NotNull Result<Record> results = dslContext.select().from(dataManager.getTablePrefix() + "entity_kills").fetch();
-            results.stream().iterator().forEachRemaining(record -> {
-                UUID uuid = UUID.fromString(record.get("player").toString());
-                EntityType entityType = EntityType.valueOf(record.get("entity_type").toString());
-                int amount = 0;
-                try {
-                    amount = Integer.parseInt(record.get("count").toString());
-                } catch (NumberFormatException ex) {
-                    amount = Double.valueOf(record.get("count").toString()).intValue();
-                }
-                PlayerData playerData = this.playerActionManager.getPlayerData(uuid);
-                playerData.addKilledEntity(entityType, amount);
-            });
-        });
+        //        List<Boosted> boosted = new ArrayList<>();
+        //        String prefix = dataManager.getTablePrefix();
+        //        dataManager.getDatabaseConnector().connectDSL(dslContext -> {
+        //            dslContext.select().from(DSL.table(prefix + "boosted_players")).fetch().forEach(record -> {
+        //                boosted.add(new BoostedPlayerImpl(
+        //                        UUID.fromString(record.get("player").toString()),
+        //                        Integer.parseInt(record.get("amount").toString()),
+        //                        Long.parseLong(record.get("end_time").toString())
+        //                ));
+        //            });
+        //
+        //            dslContext.select().from(DSL.table(prefix + "boosted_spawners")).fetch().forEach(record -> {
+        //                Location location = new Location(
+        //                        Bukkit.getWorld(record.get("world").toString()),
+        //                        Double.parseDouble(record.get("x").toString()),
+        //                        Double.parseDouble(record.get("y").toString()),
+        //                        Double.parseDouble(record.get("z").toString()));
+        //                boosted.add(new BoostedSpawnerImpl(
+        //                        location,
+        //                        Integer.parseInt(record.get("amount").toString()),
+        //                        Long.parseLong(record.get("end_time").toString())
+        //                ));
+        //            });
+        //        });
+        //        this.boostManager.addBoosts(boosted);
+
+        //        //Load entity kills
+        //        dataManager.getDatabaseConnector().connectDSL(dslContext -> {
+        //            @NotNull Result<Record> results = dslContext.select().from(dataManager.getTablePrefix() + "entity_kills").fetch();
+        //            results.stream().iterator().forEachRemaining(record -> {
+        //                UUID uuid = UUID.fromString(record.get("player").toString());
+        //                EntityType entityType = EntityType.valueOf(record.get("entity_type").toString());
+        //                int amount = 0;
+        //                try {
+        //                    amount = Integer.parseInt(record.get("count").toString());
+        //                } catch (NumberFormatException ex) {
+        //                    amount = Double.valueOf(record.get("count").toString()).intValue();
+        //                }
+        //                PlayerData playerData = this.playerActionManager.getPlayerData(uuid);
+        //                playerData.addKilledEntity(entityType, amount);
+        //            });
+        //        });
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    private void onPlayerLogin(PlayerLoginEvent event) {
+        Player player = event.getPlayer();
+        if (!player.isWhitelisted() && !this.isDatabaseInitialized) {
+            event.disallow(PlayerLoginEvent.Result.KICK_OTHER, "Een momentje geduld :)");
+        }
     }
 
     @Override
